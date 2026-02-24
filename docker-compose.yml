@@ -1,0 +1,19 @@
+services:
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+  email-service:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      FROM_EMAIL: "noreply@local"
+    depends_on:
+      - mailhog
