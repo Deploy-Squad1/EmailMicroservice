@@ -59,9 +59,11 @@ Healthcheck:
 curl http://localhost:8081/health
 
 Send Invite:
+```
 curl -X POST http://localhost:8081/send-invite \
   -H "Content-Type: application/json" \
   -d '{"to_email":"user@secret-society.local","invite_link":"https://example.com"}'
+```
 
 Check email in MailHog UI:
 http://localhost:8025
