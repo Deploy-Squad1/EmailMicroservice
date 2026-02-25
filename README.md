@@ -62,7 +62,7 @@ Send Invite:
 ```
 curl -X POST http://localhost:8081/send-invite \
   -H "Content-Type: application/json" \
-  -d '{"to_email":"user@secret-society.local","invite_link":"https://example.com"}'
+  -d '{"to_email":"user@example.com","invite_link":"https://example.com"}'
 ```
 
 Check email in MailHog UI:
