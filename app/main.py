@@ -1,14 +1,27 @@
 import os
 import smtplib
+import logging
 from email.message import EmailMessage
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, EmailStr, HttpUrl
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("email-service")
+
 app = FastAPI(title="EmailMicroservice")
+
+
+class EmailSendError(Exception):
+    """Raised when sending an email fails."""
+
 
 class InviteEmailRequest(BaseModel):
     to_email: EmailStr
     invite_link: HttpUrl
+
 
 class DailyPasswordRequest(BaseModel):
     to_email: EmailStr
@@ -26,7 +39,8 @@ def send_email(to_email: str, subject: str, body: str):
     smtp_pass = os.getenv("SMTP_PASS", "")
     from_email = os.getenv("FROM_EMAIL", "noreply@local")
     if not smtp_host:
-        raise Exception ("SMTP_HOST is not set")
+        logger.critical("SMTP_HOST environment variable is not set")
+        raise RuntimeError("SMTP_HOST environment variable is not set")
     msg = EmailMessage()
     msg["From"] = from_email
     msg["To"] = to_email
@@ -39,17 +53,25 @@ def send_email(to_email: str, subject: str, body: str):
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
             server.send_message(msg)
-    except Exception:
-        raise Exception("Email sending failed")
+        logger.info("Email successfully sent to %s", to_email)
+    except (smtplib.SMTPException, OSError) as exc:
+        logger.error ("SMTP delivery failed: %s", exc)
+        raise EmailSendError("Email delivery failed") from exc
+    
+def safe_send(to_email: str, subject: str, body: str):
+    try:
+        send_email(to_email, subject, body)
+    except EmailSendError:
+        raise HTTPException(
+            status_code=502,
+            detail="Email delivery failed"
+        )
 
 @app.post("/send-invite")
 def send_invite(payload: InviteEmailRequest):
     body = "You've been invited.\n"
     body += f"Invitation link: {payload.invite_link}\n"
-    try:
-        send_email(str(payload.to_email), "Your invitation", body)
-    except Exception:
-        raise HTTPException(status_code=502, detail="Email delivery failed")
+    safe_send(str(payload.to_email), "Your invitation", body)
     return {"sent": True}
 
 @app.post("/send-daily-password")
@@ -57,10 +79,7 @@ def send_daily_password(payload: DailyPasswordRequest):
     body = ("Here is your daily password:\n")
     body += f"{payload.daily_password}\n"
     if payload.valid_until:
-        body += f"Valid until: {payload.valid_until}\n"
-    try:
-        send_email(str(payload.to_email), "Daily password", body)
-    except Exception:
-        raise HTTPException(status_code=502, detail="Email delivery failed")
+        body += f"\nValid until: {payload.valid_until}\n"
+    safe_send(str(payload.to_email), "Daily password", body)
     return {"sent": True}
 
