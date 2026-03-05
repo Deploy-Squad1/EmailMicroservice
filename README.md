@@ -38,6 +38,7 @@ The service reads environment variables from .env used by docker-compose.yml.
 Currently required:
 
 `DJANGO_SECRET_KEY` - used to verify JWT tokens issued by the Core service.
+`ALLOWED_ROLES` - a list of roles allowed to access the email endpoints.
 
 ## Error Handling
 

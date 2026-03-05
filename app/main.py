@@ -31,9 +31,11 @@ app.add_middleware(
 JWT_SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 
+ALLOWED_ROLES = set(os.getenv("ALLOWED_ROLES", "Gold").split(","))
+
 if not JWT_SECRET_KEY:
-    logger.critical("DJANGO_SECRET_KEY environment variable isn't set")
-    raise RuntimeError("DJANGO_SECRET_KEY environment isn't set")
+    logger.critical("JWT_SECRET_KEY environment variable isn't set")
+    raise RuntimeError("JWT_SECRET_KEY environment isn't set")
 
 
 def verify_jwt_from_cookie(request: Request):
@@ -61,7 +63,8 @@ def verify_jwt_from_cookie(request: Request):
 
     role = payload.get("role")
 
-    if role != "Gold":
+    if role not in ALLOWED_ROLES:
+        logger.warning("Access denied for role: %s", role)
         raise HTTPException(status_code=403, detail="Forbidden")
 
     return payload
