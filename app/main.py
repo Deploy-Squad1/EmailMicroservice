@@ -1,4 +1,3 @@
-# pylint: disable=missing-module-docstring,missing-function-docstring,import-error,too-few-public-methods
 import logging
 import os
 import smtplib

@@ -1,0 +1,5 @@
+[MASTER]
+ignore-paths=^(.*/|)migrations/.*$
+
+[MESSAGES CONTROL]
+disable=C0114,C0115,C0116,W0511,E0401,R0903
