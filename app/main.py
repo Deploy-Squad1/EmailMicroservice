@@ -4,10 +4,13 @@ import smtplib
 from email.message import EmailMessage
 
 import jwt
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from jwt import PyJWTError
 from pydantic import BaseModel, EmailStr, HttpUrl
+
+load_dotenv(override=False)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,8 +32,8 @@ JWT_SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 
 if not JWT_SECRET_KEY:
-    logger.critical("JWT_SECRET_KEY environment variable isn't set")
-    raise RuntimeError("JWT_SECRET_KEY environment isn't set")
+    logger.critical("DJANGO_SECRET_KEY environment variable isn't set")
+    raise RuntimeError("DJANGO_SECRET_KEY environment isn't set")
 
 
 def verify_jwt_from_cookie(request: Request):
