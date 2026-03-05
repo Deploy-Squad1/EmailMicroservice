@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,import-error,too-few-public-methods
 import logging
 import os
 import smtplib
@@ -25,7 +26,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-type"],
 )
 
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 
 if not JWT_SECRET_KEY:
@@ -37,20 +38,28 @@ def verify_jwt_from_cookie(request: Request):
     token = request.cookies.get("access_token")
 
     if not token:
-        raise HTTPException(status_code=401, detail="Missing access token")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing access token",
+        )
 
     try:
         payload = jwt.decode(
             token,
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM],
+            options={"require": ["exp"]},
         )
-    except PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except PyJWTError as e:
+        logger.error("JWT decode failed: %s", e)
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token",
+        ) from e
 
     role = payload.get("role")
 
-    if role not in ["Gold"]:
+    if role != "Gold":
         raise HTTPException(status_code=403, detail="Forbidden")
 
     return payload
@@ -61,16 +70,20 @@ class EmailSendError(Exception):
 
 
 class InviteEmailRequest(BaseModel):
+    """Request payload for sending invitation emails."""
+
     to_email: EmailStr
     invite_link: HttpUrl
 
 
 class DailyPasswordRequest(BaseModel):
+    """Request payload for sending daily password emails."""
+
     to_email: EmailStr
-    daily_password: str  # due to be included by rotate-daily-password scheduler/cron from Core service
-    valid_until: str | None = (
-        None  # the same - input from Core by rotate-daily-password scheduler/cron
-    )
+    # included by rotate-daily-password scheduler/cron from Core service
+    daily_password: str
+    # optional value provided by Core rotate-daily-password scheduler
+    valid_until: str | None = None
 
 
 @app.get("/health")
@@ -94,7 +107,8 @@ def send_email(to_email: str, subject: str, body: str):
     msg.set_content(body)
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=5) as server:
-            # Mailhog/local: SMTP_USER empty - no TLS/login. For real SMPT server set port (e.g.587)
+            # Mailhog/local: SMTP_USER empty - no TLS/login
+            # For real SMPT server TLS and port 587
             if smtp_user:
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
@@ -108,14 +122,17 @@ def send_email(to_email: str, subject: str, body: str):
 def safe_send(to_email: str, subject: str, body: str):
     try:
         send_email(to_email, subject, body)
-    except EmailSendError:
-        raise HTTPException(status_code=502, detail="Email delivery failed")
+    except EmailSendError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Email delivery failed",
+        ) from exc
 
 
 @app.post("/send-invite")
 def send_invite(
     payload: InviteEmailRequest,
-    user=Depends(verify_jwt_from_cookie),
+    _=Depends(verify_jwt_from_cookie),
 ):
     body = "You've been invited.\n"
     body += f"Invitation link: {payload.invite_link}\n"
@@ -126,7 +143,7 @@ def send_invite(
 @app.post("/send-daily-password")
 def send_daily_password(
     payload: DailyPasswordRequest,
-    user=Depends(verify_jwt_from_cookie),
+    _=Depends(verify_jwt_from_cookie),
 ):
     body = "Here is your daily password:\n"
     body += f"{payload.daily_password}\n"
