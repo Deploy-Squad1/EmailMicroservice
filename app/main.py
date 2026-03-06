@@ -86,7 +86,7 @@ class PasscodeRequest(BaseModel):
 
     to_email: EmailStr
     # included by rotate-daily-password scheduler/cron from Core service
-    daily_password: str
+    passcode: str
     # optional value provided by Core rotate-daily-password scheduler
     valid_until: str | None = None
 
@@ -146,10 +146,7 @@ def send_invite(
 
 
 @app.post("/send-passcode")
-def send_passcode(
-    payload: PasscodeRequest,
-    _=Depends(verify_jwt_from_cookie),
-):
+def send_passcode(payload: PasscodeRequest):
     body = "Here is your daily passcode:\n"
     body += f"{payload.passcode}\n"
     if payload.valid_until:
