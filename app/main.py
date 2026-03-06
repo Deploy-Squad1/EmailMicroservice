@@ -81,8 +81,8 @@ class InviteEmailRequest(BaseModel):
     invite_link: HttpUrl
 
 
-class DailyPasswordRequest(BaseModel):
-    """Request payload for sending daily password emails."""
+class PasscodeRequest(BaseModel):
+    """Request payload for sending daily passcode emails."""
 
     to_email: EmailStr
     # included by rotate-daily-password scheduler/cron from Core service
@@ -145,14 +145,14 @@ def send_invite(
     return {"sent": True}
 
 
-@app.post("/send-daily-password")
-def send_daily_password(
-    payload: DailyPasswordRequest,
+@app.post("/send-passcode")
+def send_passcode(
+    payload: PasscodeRequest,
     _=Depends(verify_jwt_from_cookie),
 ):
-    body = "Here is your daily password:\n"
-    body += f"{payload.daily_password}\n"
+    body = "Here is your daily passcode:\n"
+    body += f"{payload.passcode}\n"
     if payload.valid_until:
         body += f"\nValid until: {payload.valid_until}\n"
-    safe_send(str(payload.to_email), "Daily password", body)
+    safe_send(str(payload.to_email), "Daily passcode", body)
     return {"sent": True}
