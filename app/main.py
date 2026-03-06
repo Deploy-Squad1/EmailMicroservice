@@ -1,9 +1,16 @@
+import logging
 import os
 import smtplib
-import logging
 from email.message import EmailMessage
-from fastapi import FastAPI, HTTPException
+
+import jwt
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from jwt import PyJWTError
 from pydantic import BaseModel, EmailStr, HttpUrl
+
+load_dotenv(override=False)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,24 +20,81 @@ logger = logging.getLogger("email-service")
 
 app = FastAPI(title="EmailMicroservice")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["POST"],
+    allow_headers=["Authorization", "Content-type"],
+)
+
+JWT_SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+JWT_ALGORITHM = "HS256"
+
+ALLOWED_ROLES = set(os.getenv("ALLOWED_ROLES", "Gold").split(","))
+
+if not JWT_SECRET_KEY:
+    logger.critical("JWT_SECRET_KEY environment variable isn't set")
+    raise RuntimeError("JWT_SECRET_KEY environment isn't set")
+
+
+def verify_jwt_from_cookie(request: Request):
+    token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing access token",
+        )
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+            options={"require": ["exp"]},
+        )
+    except PyJWTError as e:
+        logger.error("JWT decode failed: %s", e)
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token",
+        ) from e
+
+    role = payload.get("role")
+
+    if role not in ALLOWED_ROLES:
+        logger.warning("Access denied for role: %s", role)
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return payload
+
 
 class EmailSendError(Exception):
     """Raised when sending an email fails."""
 
 
 class InviteEmailRequest(BaseModel):
+    """Request payload for sending invitation emails."""
+
     to_email: EmailStr
     invite_link: HttpUrl
 
 
-class DailyPasswordRequest(BaseModel):
+class PasscodeRequest(BaseModel):
+    """Request payload for sending daily passcode emails."""
+
     to_email: EmailStr
-    daily_password: str  # due to be included by rotate-daily-password scheduler/cron from Core service
-    valid_until: str | None = None  # the same - input from Core by rotate-daily-password scheduler/cron
+    # included by rotate-daily-password scheduler/cron from Core service
+    passcode: str
+    # optional value provided by Core rotate-daily-password scheduler
+    valid_until: str | None = None
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 def send_email(to_email: str, subject: str, body: str):
     smtp_host = os.getenv("SMTP_HOST")
@@ -48,38 +112,44 @@ def send_email(to_email: str, subject: str, body: str):
     msg.set_content(body)
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=5) as server:
-            # Mailhog/local: SMTP_USER empty - no TLS/login. For real SMPT server set port (e.g.587)
+            # Mailhog/local: SMTP_USER empty - no TLS/login
+            # For real SMPT server TLS and port 587
             if smtp_user:
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
             server.send_message(msg)
         logger.info("Email successfully sent to %s", to_email)
     except (smtplib.SMTPException, OSError) as exc:
-        logger.error ("SMTP delivery failed: %s", exc)
+        logger.error("SMTP delivery failed: %s", exc)
         raise EmailSendError("Email delivery failed") from exc
-    
+
+
 def safe_send(to_email: str, subject: str, body: str):
     try:
         send_email(to_email, subject, body)
-    except EmailSendError:
+    except EmailSendError as exc:
         raise HTTPException(
             status_code=502,
-            detail="Email delivery failed"
-        )
+            detail="Email delivery failed",
+        ) from exc
+
 
 @app.post("/send-invite")
-def send_invite(payload: InviteEmailRequest):
+def send_invite(
+    payload: InviteEmailRequest,
+    _=Depends(verify_jwt_from_cookie),
+):
     body = "You've been invited.\n"
     body += f"Invitation link: {payload.invite_link}\n"
     safe_send(str(payload.to_email), "Your invitation", body)
     return {"sent": True}
 
-@app.post("/send-daily-password")
-def send_daily_password(payload: DailyPasswordRequest):
-    body = ("Here is your daily password:\n")
-    body += f"{payload.daily_password}\n"
+
+@app.post("/send-passcode")
+def send_passcode(payload: PasscodeRequest):
+    body = "Here is your daily passcode:\n"
+    body += f"{payload.passcode}\n"
     if payload.valid_until:
         body += f"\nValid until: {payload.valid_until}\n"
-    safe_send(str(payload.to_email), "Daily password", body)
+    safe_send(str(payload.to_email), "Daily passcode", body)
     return {"sent": True}
-
