@@ -91,7 +91,7 @@ class PasscodeRequest(BaseModel):
     valid_until: str | None = None
 
 
-@app.get("/health")
+@app.get("/email/health")
 def health():
     return {"status": "ok"}
 
@@ -134,7 +134,7 @@ def safe_send(to_email: str, subject: str, body: str):
         ) from exc
 
 
-@app.post("/send-invite")
+@app.post("/email/send-invite")
 def send_invite(
     payload: InviteEmailRequest,
     _=Depends(verify_jwt_from_cookie),
@@ -145,7 +145,7 @@ def send_invite(
     return {"sent": True}
 
 
-@app.post("/send-passcode")
+@app.post("/email/internal/send-passcode")
 def send_passcode(payload: PasscodeRequest):
     body = "Here is your daily passcode:\n"
     body += f"{payload.passcode}\n"
